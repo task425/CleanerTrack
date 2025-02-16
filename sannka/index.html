@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="jp">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex" />
+    <script src="https://www.gstatic.com/firebasejs/6.3.4/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/6.3.4/firebase-firestore.js"></script>
+    <title>Participation</title>
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+
+        #app {
+            text-align: center;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            max-width: 300px;
+            width: 100%;
+        }
+
+        h2 {
+            color: #333333;
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+        }
+
+        #submit {
+            width: 100%;
+            padding: 10px;
+            background-color: #28cc9e;
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #submit:hover {
+            background-color: #28cc9e;
+        }
+
+        #backBtn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: grey;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+            z-index: 1;
+        }
+    </style>
+    <script>
+        // Firebaseの構成
+        const firebaseConfig = {
+            apiKey: "AIzaSyCHszTXle43TYH-YeHLQ6yxhr96qlu0Ac8",
+            authDomain: "it222035.firebaseapp.com",
+            databaseURL: "https://it222035-default-rtdb.firebaseio.com",
+            projectId: "it222035",
+            storageBucket: "it222035.appspot.com",
+            messagingSenderId: "461596179087",
+            appId: "1:461596179087:web:32d7ff30d1daad30304efa",
+            measurementId: "G-Y9WVLRJSHL"
+        };
+
+        // Firebaseアプリの初期化
+        firebase.initializeApp(firebaseConfig);
+
+        // Firestoreの参照を取得
+        const db = firebase.firestore();
+        var RoomID;
+        var GuestID;
+        var RoomdateID
+        function startProcess() {
+            //画面に入力された値を取得
+            RoomID = document.getElementById('RoomID').value;
+
+            //phpにRoomIDを送信して値を検証
+            fetch('get_roomdateid.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'RoomID=' + RoomID,
+            })
+                .then(response => response.json())
+                .then(async data =>  {
+                    //同じRoomIDが存在してそのRoomIDでホストが開いていた場合
+                    if (data.RoomdateID && data.activity == 1) {
+                        RoomdateID = data.RoomdateID;
+                        await callProcessphp(RoomdateID);
+                    } else if (data.RoomdateID && data.activity) {
+                        alert("ルームが開いてません");
+                    } else {
+                        alert("該当するRoomdateIDが見つかりませんでした。");
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert("エラーが発生しました");
+                });
+
+            // Firestoreリアルタイムアップデートをlisten
+            const listener = db.collection("navigation").doc(String(RoomID))
+                .onSnapshot((doc) => {
+                    console.log("doc is through");
+                    console.log("RoomID" + RoomID);
+                    console.log("GuestID" + GuestID);
+                    console.log("RoomdateID" + RoomdateID);
+                    // console.log(doc.data().trigger);
+                    if (doc.data().trigger) {
+                        console.log('doc is true');
+                        // 更新が成功したら画面遷移
+                        window.location.href = './../main/mainDirectionFire.html?GuestID=' + GuestID + '&RoomID=' + RoomID + '&RoomdateID=' + RoomdateID;
+                    }
+                });
+        }
+
+        //同じRoomIDが存在してそのRoomIDでホストが開いていた場合にそのデータをphpmyadminに格納
+        async function callProcessphp(RoomdateID) {
+            await fetch('process.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'RoomdateID=' + RoomdateID,
+            })
+                .then(response => response.json())
+                .then(data => {
+                    alert("ホストが開始するまでお待ちください");
+                     GuestID = data.GuestID;
+                    document.getElementById('submit').disabled = true;
+  　　　　　　 document.getElementById('submit').style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert("エラー");
+                });
+        }
+
+        function goBack() {
+            // ブラウザの戻るボタンを実行
+            window.location.href = './../menu/menu.html';
+        }
+    </script>
+
+</head>
+
+<body>
+    <button id="backBtn" onclick="goBack()">戻る</button>
+
+    <div id="app">
+        <h2>ルーム参加</h2>
+        <label for="RoomID"></label>
+        <input type="text" id="RoomID" placeholder="ルームIDを入力してください" maxlength="5">
+        <br>
+        <button id="submit" onclick="startProcess()">次へ</button>
+    </div>
+</body>
+
+</html>

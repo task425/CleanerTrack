@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex" />
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        form {
+            text-align: center;
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            max-width: 300px;
+            width: 100%;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+        }
+
+        #gofeedback {
+            width: 100%;
+            padding: 10px;
+            background-color: #28cc9e;
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        #gofeedback:hover {
+            background-color: #28cc9e;
+        }
+
+        #backBtn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: grey;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+            z-index: 1;
+        }
+    </style>
+    <title>Document</title>
+</head>
+
+<body>
+    <button id="backBtn" onclick="goBack()">戻る</button>
+    <form>
+        <label for="inputData">ルームID:</label>
+        <input type="text" id="inputData" name="inputData" required><br>
+        <button id="gofeedback" onclick="checkAndNavigate()" type="button">次へ</button>
+    </form>
+    <script>
+        console.log("サンプルデータ = \"16815\"");
+        async function checkAndNavigate() {
+            // フォームデータの取得
+            var roomid = document.getElementById('inputData').value;
+
+            // データが入力されているかチェック
+            if (roomid.trim() !== ' ') {
+                await checkroomid(roomid);
+                // 入力がある場合、遷移
+                // URLにroomidをパラメータとして付加して次のページに遷移
+                window.location.href = "./../feedback/feedback.html?roomid=" + encodeURIComponent(roomid);
+            } else {
+                // 入力がない場合、アラートを表示（任意）
+                alert('データを入力してください。');
+            }
+
+            // フォームのデフォルトの送信をキャンセル
+            return false;
+        }
+
+        function checkroomid(roomid) {
+            return new Promise((resolve) => {
+                $.ajax({
+                    url: 'check_roomid.php',
+                    type: 'POST',
+                    data: { roomid: roomid },
+                    success: function (data) {
+                        console.log(data);
+                        if (data === "1") {
+                            console.log("success");
+                            resolve();
+                        } else {
+                            alert("roomidが一致しません。もう一度入力してください。");
+                        }
+                    },
+                    error: function (error) {
+                        console.log('エラー:', error);
+                    }
+                });
+            });
+        }
+
+        function goBack() {
+            // ブラウザの戻るボタンを実行
+            window.location.href = './../menu/menu.html';
+        }
+    </script>
+</body>
+
+</html>

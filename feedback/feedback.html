@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback</title>
+    <script
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZxPnhffhcNL7LWvwsyktUncZw-TVHXvI&libraries=places"></script>
+    <script src="https://www.gstatic.com/firebasejs/6.3.4/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/6.3.4/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/5.9.1/firebase-messaging.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/6.3.4/firebase-storage.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        #map {
+            height: 400px;
+            width: 100%;
+            margin-top: 20px;
+        }
+
+        .info-content {
+            max-width: 200px;
+            text-align: center;
+        }
+
+        .photolayout {
+            max-width: 100%;
+            max-height: 150px;
+        }
+
+        #backBtn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: grey;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+            z-index: 1;
+        }
+
+        form {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+        }
+
+        label {
+            margin-right: 10px;
+            font-size: 16px;
+        }
+
+        select {
+            width: 100%;
+            padding: 10px;
+            margin-right: 10px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 15px;
+            background-color: #4caf50;
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        h1 {
+            margin-top: 20px;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <button id="backBtn" onclick="goBack()">戻る</button>
+
+    <h1>Feedback</h1>
+
+
+    <form action="#" method="post">
+        <label for="selectBox">データ選択:</label>
+        <select name="selectBox" id="selectBox" style="width: auto;">
+            <!--php include 'get_data.php'; -->
+        </select>
+        <button type="button" onclick="initMap()">Submit</button>
+    </form>
+
+    <div id="map"></div>
+
+    <script>
+        // URLからパラメータを取得
+        // roomidをfeedbacklogin.htmlから取得
+        var urlParams = new URLSearchParams(window.location.search);
+        var roomid = urlParams.get('roomid');
+        console.log("Room ID:", roomid);
+        var map;
+        var firebaseConfig = {
+            apiKey: "AIzaSyCHszTXle43TYH-YeHLQ6yxhr96qlu0Ac8",
+            authDomain: "it222035.firebaseapp.com",
+            projectId: "it222035",
+            storageBucket: "it222035.appspot.com",
+            messagingSenderId: "461596179087",
+            appId: "1:461596179087:web:82bd1c5715115717304efa",
+            measurementId: "G-Z2KZ9NJQR0"
+        };
+        firebase.initializeApp(firebaseConfig);
+        var db = firebase.firestore();
+        var storage = firebase.storage(); // Firebase Storageの初期化
+        var directionsService = new google.maps.DirectionsService();
+        var directionsRenderer = new google.maps.DirectionsRenderer({
+            preserveViewport: true,
+            suppressMarkers: true
+        });
+        var roomdateid = 0;
+        var rootid = [];
+        var fukuro = [];
+        var time = [];
+
+        // selectbox
+        // ページが読み込まれた後に実行される処理
+        $(document).ready(function () {
+            console.log("php is ok");
+            // Ajaxリクエストを送信し、データを取得してセレクトボックスに追加
+            $.ajax({
+                url: 'get_data.php',
+                type: 'GET',
+                data: { roomid: roomid },
+                success: function (data) {
+                    // 取得したデータをセレクトボックスに追加
+                    $('#selectBox').html(data);
+                },
+                error: function (error) {
+                    console.log('エラー:', error);
+                }
+            });
+        });
+
+        function initMap() {
+
+            // 地図の初期化
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 35.6815, lng: 139.765499 }, // 東京駅
+                zoom: 15,
+                // Street View controlを消す
+                streetViewControl: false,
+
+                // Map Type control (satellite, terrain, etc.)を消す
+                mapTypeControl: false,
+
+                // Zoom controlを消す
+                zoomControl: false
+            });
+
+            // Create a default marker (pin)
+            defaultMarker = new google.maps.Marker({
+                position: { lat: 35.6815, lng: 139.765499 },
+                map: null, // Set the map property to null to hide the marker initially
+                title: 'Default Marker'
+            });
+
+            loadMarkers();
+
+
+        }
+
+        // エラー処理
+        function handleLocationError(browserHasGeolocation) {
+            console.error('Error: Geolocation service failed.');
+        }
+
+        // Firebaseからデータ取得し、マーカー表示
+        async function loadMarkers() {
+            // Firebaseから持ってきたデータを保存する配列
+            var dbData = [];
+            // roomdateid
+            roomdateid = await setRoomDateID();
+            // 結果をコンソールに表示
+            console.log(roomdateid);
+            // Firestoreからマーカーデータを取得
+            var snapshot = await db.collection('markers').get();
+            var i = 0;
+
+            // 取得したデータを元にマーカーを作成
+            snapshot.forEach(async doc => {
+                var data = doc.data();
+                console.log(data);
+                if (roomdateid == data.roomdateid) {
+                    var dbphoto = await displayImage(data);
+                    dbData.push({
+                        lat: data.position.lat,
+                        lng: data.position.lng,
+                        photo: dbphoto,
+                        text: data.text
+                    });
+                    console.log("dbData:" + dbData[i] + ", i:" + i);
+                    addMarker(dbData, i);
+                    i++;
+                }
+            });
+
+            await RootID(roomdateid);
+            for (var rtidnum = 0; rtidnum < rootid.length; rtidnum++) {
+                await fukuropin(rtidnum);
+                console.log("rootid.length:" + rootid.length + "fukuro.length:" + fukuro[0].length);
+                if (fukuro[rtidnum] != '') {
+                    for (var fnum = 0; fnum < fukuro[rtidnum].length; fnum++) {
+                        // console.log("fukuropin:" + JSON.stringify(fukuro[rtnum][fnum]));
+                        await addfukuropin(rtidnum, fnum);
+                        if (fnum >= 1) {
+                            var waypoint = await waypoints(rtidnum, fnum);
+                            await makedirections(waypoint, rtidnum, fnum);
+                        }
+                    }
+                }
+            }
+            makerange(roomdateid);
+
+        }
+
+        // 初期ピン設定
+        function addMarker(dbData, i) {
+            // マーカー情報
+            var marker = new google.maps.Marker({
+                position: { lat: dbData[i].lat, lng: dbData[i].lng },
+                map: map,
+                animation: google.maps.Animation.DROP
+            });
+
+            // 写真やテキストのウィンドウ情報
+            var infowindow = new google.maps.InfoWindow({
+                content: '<div class="info-content">' +
+                    '<img id="photoPreview" class="photolayout" src="' + dbData[i].photo + '"><br>' +
+                    '<p id="text">' + dbData[i].text + '</p>' +
+                    '</div>'
+            });
+
+            // クリック時ウィンドウ表示
+            marker.addListener('click', function () {
+                infowindow.open(map, marker);
+            });
+
+        }
+
+        function makerange(roomdateid) {
+            console.log("makerange/roomdateid:" + roomdateid);
+            // Ajaxリクエストを送信
+            $.ajax({
+                url: 'get_range.php',
+                type: 'POST',
+                data: { roomdateid: roomdateid },
+                dataType: 'json', // JSON形式でデータを受け取る
+                success: function (data) {
+                    console.log("makerange:" + JSON.stringify(data));
+                    if (data) {
+                        console.log(data[0]);
+                        fillinsquare(data);
+
+                        // 範囲の中心をマップの中心に設定
+                        var centerPoint = CenterPoint(JSON.parse(data[0].ne), JSON.parse(data[0].sw));
+                        map.setCenter(centerPoint);
+
+                        // マップのズームを範囲に合わせる
+                        fitBounds(map, [JSON.parse(data[0].ne), JSON.parse(data[0].sw)]);
+                    } else {
+                        console.log('取得したデータがありません。');
+                    }
+                },
+                error: function (error) {
+                    console.log('エラー:', error);
+                }
+            });
+        }
+
+        async function setRoomDateID() {
+            // 選択されたデータを取得
+            var selecttime = $('#selectBox').val();
+            console.log("selecttime:" + selecttime);
+            // Ajaxリクエストを送信
+            await $.ajax({
+                url: 'get_roomdateid.php',
+                type: 'POST',
+                data: {
+                    roomid: roomid,
+                    time: selecttime
+                },
+                dataType: 'json', // JSON形式でデータを受け取る
+                success: function (data) {
+                    if (data) {
+                        console.log(data[0]);
+                        roomdateid = data[0];
+                    } else {
+                        console.log('取得したデータがありません。');
+                    }
+                },
+                error: function (error) {
+                    console.log('エラー:', error);
+                }
+            });
+            return roomdateid;
+        }
+
+        // ダウンロードURLを元に画像を表示
+        async function displayImage(data) {
+            var storageRef = storage.ref('images/' + data.photo); // 表示したい画像のパス
+
+            try {
+                // ダウンロードURLを取得し、非同期処理が完了するまで待つ
+                const downloadURL = await storageRef.getDownloadURL();
+                console.log('Download URL:', downloadURL);
+
+                return downloadURL;
+            } catch (error) {
+                console.error('Error getting download URL:', error);
+                return null; // エラーの場合は適切にハンドリング
+            }
+
+        }
+
+        // 四角形を描く
+        function fillinsquare(data) {
+            // 座標4点
+            var ne = JSON.parse(data[0].ne);
+            var nw = JSON.parse(data[0].nw);
+            var sw = JSON.parse(data[0].sw);
+            var se = JSON.parse(data[0].se);
+
+            // 多角形の作成
+            var rectangle = new google.maps.Polygon({
+                paths: [ne, nw, sw, se],
+                strokeColor: '#000',
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                fillColor: '#000',
+                fillOpacity: 0.2
+            });
+
+            // Mapに多角形を追加
+            rectangle.setMap(map);
+        }
+
+        // 2点の中心座標を求める関数
+        function CenterPoint(point1, point2) {
+            var lat = (point1.lat + point2.lat) / 2;
+            var lng = (point1.lng + point2.lng) / 2;
+            return { lat: lat, lng: lng };
+        }
+
+        // マップのズームを範囲に合わせる関数
+        function fitBounds(map, bounds) {
+            var mapBounds = new google.maps.LatLngBounds();
+            bounds.forEach(function (point) {
+                mapBounds.extend(new google.maps.LatLng(point.lat, point.lng));
+            });
+            map.fitBounds(mapBounds);
+        }
+
+        async function RootID(roomdateid) {
+            console.log("get_rootid/roomdateid:" + roomdateid);
+            // Ajaxリクエストを送信
+            await $.ajax({
+                url: 'get_rootid.php',
+                type: 'POST',
+                data: { roomdateid: roomdateid },
+                dataType: 'json', // JSON形式でデータを受け取る
+                success: function (data) {
+                    if (data) {
+                        console.log("rootid:" + JSON.stringify(data));
+                        rootid = data;
+                        console.log("rootid:" + JSON.stringify(rootid[0]));
+                    } else {
+                        console.log('取得したデータがありません。');
+                    }
+                },
+                error: function (error) {
+                    console.log('エラー:', error);
+                }
+            });
+        }
+
+        async function fukuropin(rtidnum) {
+            console.log("getfukuropin is through");
+            return new Promise((resolve) => {
+                // Ajaxリクエストを送信
+                $.ajax({
+                    url: 'get_fukuropin.php',
+                    type: 'POST',
+                    data: { rootid: parseInt(rootid[rtidnum]) },
+                    dataType: 'json', // JSON形式でデータを受け取る
+                    success: async function (data) {
+                        if (data) {
+                            // console.log("fukuropin:" + JSON.stringify(data));
+                            fukuro.push(data);
+                            console.log("fukuropin:" + JSON.stringify(fukuro));
+                            for (var timenum = 0; timenum < fukuro[rtidnum].length; timenum++) {
+                                time.push(fukuro[rtidnum][timenum].time);
+                                console.log("time:" + JSON.stringify(time));
+                            }
+                            resolve();
+                        } else {
+                            console.log('取得したデータがありません。');
+                            fukuro.push('');
+                            resolve();
+                        }
+                    },
+                    error: function (error) {
+                        console.log('エラー:', error);
+                    }
+                });
+            });
+        }
+
+        async function waypoints(rtidnum, fnum) {
+            console.log("waypoints rootid: " + rootid[rtidnum]);
+            var waypoint;
+            // Ajaxリクエストを送信
+            await $.ajax({
+                url: 'get_waypoints.php',
+                type: 'POST',
+                data: {
+                    rootid: parseInt(rootid[rtidnum]),
+                    starttime: time[fnum - 1],
+                    endtime: time[fnum]
+                },
+                dataType: 'json', // JSON形式でデータを受け取る
+                success: function (data) {
+                    if (data) {
+                        // console.log("waypoints" + JSON.stringify(data));
+                        waypoint = data;
+                        console.log("waypoints" + JSON.stringify(waypoint));
+                    } else {
+                        console.log('取得したデータがありません。');
+                    }
+                },
+                error: function (error) {
+                    console.log('エラー:', error);
+                }
+            });
+            return waypoint;
+        }
+
+        //1袋終了ボタン押下時
+        function addfukuropin(rtnum, fnum) {
+            console.log("addfukuropin is through");
+            // カスタムピンのアイコン
+            var customIcon = {
+                url: 'images/gomibukuro_single.png', // 画像ファイルへのパス
+                scaledSize: new google.maps.Size(32, 32), // サイズ
+                origin: new google.maps.Point(0, 0), // 原点
+                anchor: new google.maps.Point(16, 32) // アンカー
+            };
+
+            // マップ上に新しいピンを追加
+            var marker = new google.maps.Marker({
+                position: { lat: parseFloat(fukuro[rtnum][fnum].lat), lng: parseFloat(fukuro[rtnum][fnum].lng) },
+                map: map,
+                icon: customIcon, // カスタムアイコンを設定
+                animation: google.maps.Animation.DROP
+            });
+
+        }
+
+        async function makedirections(waypoint, rtnum, fnum) {
+            // DirectionsRendererを地図にセット
+            directionsRenderer.setMap(map);
+            console.log("makedirections is through");
+            console.log("origin:" + parseFloat(fukuro[rtnum][fnum - 1].lat) + "," + parseFloat(fukuro[rtnum][fnum - 1].lng) + ", destination:" + parseFloat(fukuro[rtnum][fnum].lat) + "," + parseFloat(fukuro[rtnum][fnum].lng));
+            var collectwaypoint = [];
+            for (var i = 0; i < waypoint.length; i++) {
+                collectwaypoint.push({ location: { lat: parseFloat(waypoint[i].lat), lng: parseFloat(waypoint[i].lng) }, stopover: true });
+            }
+            console.log("waypoints" + JSON.stringify(waypoint[0]));
+            console.log("collectwaypoint:" + JSON.stringify(collectwaypoint));
+            return new Promise(resolve => {
+                // Directions request
+                var request = {
+                    origin: { lat: parseFloat(fukuro[rtnum][fnum - 1].lat), lng: parseFloat(fukuro[rtnum][fnum - 1].lng) },
+                    destination: { lat: parseFloat(fukuro[rtnum][fnum].lat), lng: parseFloat(fukuro[rtnum][fnum].lng) },
+                    waypoints: collectwaypoint,
+                    travelMode: 'WALKING'
+                };
+
+                // Get directions
+                directionsService.route(request, function (result, status) {
+                    if (status == 'OK') {
+                        // 線のスタイルを設定
+                        // directionsRenderer.setOptions({
+                        //     polylineOptions: {
+                        //         strokeColor: 'red',
+                        //         strokeOpacity: getOpacity(result.routes[0].legs[0].distance.value)
+                        //     }
+                        // });
+
+                        // 過去のルートを保存（ポリラインで新しく描画）
+                        var newPolyline = new google.maps.Polyline({
+                            path: result.routes[0].overview_path,
+                            geodesic: true,
+                            strokeColor: 'red',
+                            strokeOpacity: getOpacity(result.routes[0].legs[0].distance.value),
+                            strokeWeight: 5
+                        });
+                        // どのマップにポリラインを表示するかを表示
+                        newPolyline.setMap(map);
+                        // previousRoutes.push(newPolyline);
+
+                        // ルートを描画
+                        // directionsRenderer.setDirections(result);
+                        resolve();
+                    } else {
+                        console.error('Directions request failed. Status:', status);
+                    }
+                });
+            });
+        }
+
+        // 距離に応じて透明度を返す関数
+        function getOpacity(distance) {
+            // 例: 距離が長いほど透明度が低くなる
+            var maxDistance = 80; // 仮の最大距離
+            console.log("distance:" + distance + ", maxDistance:" + maxDistance);
+            returnDistance = 1 - distance / maxDistance;
+            if (returnDistance > 0) {
+                return (returnDistance);
+            } else {
+                return (0);
+            }
+        }
+
+        function showNotification() {
+            const selectBox = document.getElementById('date');
+
+            const selectedOption = selectBox.options[selectBox.selectedIndex].text;
+            console.log(`Selected option: ${selectedOption}`);
+        }
+
+
+        function goBack() {
+            // ブラウザの戻るボタンを実行
+            window.location.href = './../menu/menu.html';
+        }
+    </script>
+
+</body>
+
+</html>

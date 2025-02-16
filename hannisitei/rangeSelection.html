@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>rangeSelection</title>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            font-family: 'Arial', sans-serif;
+            overflow-y: hidden;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+
+        #coordinateBtn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #3498db;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+            z-index: 1;
+        }
+
+        #header {
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: #3498db;
+            color: white;
+            text-align: center;
+            padding: 10px 0;
+            font-size: 20px;
+        }
+
+        #backBtn {
+            position: fixed;
+            top: 0;
+            left: 0;
+            background-color: grey;
+            color: white;
+            padding: 10px 20px;
+            font-size: 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+            z-index: 1;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="header">範囲を指定してください</div>
+    <div id="coordinateBtn" onclick="getJSON()">次へ</div>
+    <div id="backBtn" onclick="goBack()">戻る</div>
+    <div id="map"></div>
+    <script type="text/javascript">
+        var map;
+        var rectangle; // 描画された四角形を格納する変数
+        var rectangleCoordinates = []; // 四角形の４点の座標を格納する配列
+
+        function initMap() {
+            // 初期地点を現在位置に設定
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    var initialLocation = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+
+                    map = new google.maps.Map(document.getElementById('map'), {
+                        center: initialLocation,
+                        zoom: 18,
+                        // Street View controlを消す
+                        streetViewControl: false,
+
+                        // Map Type control (satellite, terrain, etc.)を消す
+                        mapTypeControl: false,
+
+                        // Zoom controlを消す
+                        zoomControl: false
+                    });
+
+                    // DrawingManagerのセットアップ
+                    var drawingManager = new google.maps.drawing.DrawingManager({
+                        drawingControl: true,
+                        drawingControlOptions: {
+                            position: google.maps.ControlPosition.TOP_CENTER,
+                            drawingModes: ['rectangle']
+                        }
+                    });
+                    drawingManager.setMap(map);
+
+                    // 四角形の描画完了時の処理
+                    google.maps.event.addListener(drawingManager, 'rectanglecomplete', function (rect) {
+                        // 前の四角形が存在する場合はクリア
+                        if (rectangle) {
+                            rectangle.setMap(null);
+                        }
+
+                        // 描画された四角形を保持
+                        rectangle = rect;
+
+                        // 四角形の座標を取得して配列に格納
+                        var bounds = rect.getBounds();
+                        var ne = bounds.getNorthEast();
+                        var se = new google.maps.LatLng(ne.lat(), bounds.getSouthWest().lng());
+                        var sw = bounds.getSouthWest();
+                        var nw = new google.maps.LatLng(bounds.getSouthWest().lat(), ne.lng());
+
+                        rectangleCoordinates = [
+                            ne.toJSON(),
+                            se.toJSON(),
+                            sw.toJSON(),
+                            nw.toJSON()
+                        ];
+                    });
+                }, function () {
+                    // 位置情報の取得に失敗した場合の処理
+                    handleLocationError(true);
+                });
+            } else {
+                // ブラウザが位置情報サポートしていない場合の処理
+                handleLocationError(false);
+            }
+        }
+
+        function handleLocationError(browserHasGeolocation) {
+            if (browserHasGeolocation) {
+                alert("位置情報の取得に失敗しました。");
+            } else {
+                alert("このブラウザは位置情報をサポートしていません。");
+            }
+        }
+
+        function getJSON() {
+            // ボタンクリック時に座標を取得し、コンソールログに表示
+            if (rectangle) {
+                var bounds = rectangle.getBounds();
+                var ne = bounds.getNorthEast();
+                var nw = new google.maps.LatLng(ne.lat(), bounds.getSouthWest().lng());
+                var sw = bounds.getSouthWest();
+                var se = new google.maps.LatLng(bounds.getSouthWest().lat(), ne.lng());
+
+                rectangleCoordinates = [
+                    ne.toJSON(),
+                    nw.toJSON(),
+                    sw.toJSON(),
+                    se.toJSON()
+                ];
+
+                var urlParams = new URLSearchParams(window.location.search);
+                var RoomID = urlParams.get('RoomID');
+                var timestamp = urlParams.get('timestamp');
+                var RoomdateID = urlParams.get('RoomdateID');
+
+                console.log("RoomID" + RoomID);
+                console.log("timestamp" + timestamp);
+                console.log("RoomdateID" + RoomdateID);
+
+                var ne = rectangleCoordinates[0];
+                var nw = rectangleCoordinates[1];
+                var sw = rectangleCoordinates[2];
+                var se = rectangleCoordinates[3];
+
+                // fetchを使用したAjaxリクエスト
+                fetch('process.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'RoomdateID=' + RoomdateID +
+                        '&RoomID=' + RoomID +
+                        '&ne=' + JSON.stringify(ne) +
+                        '&nw=' + JSON.stringify(nw) +
+                        '&sw=' + JSON.stringify(sw) +
+                        '&se=' + JSON.stringify(se),
+
+                })
+                    .then(response => response.text())
+                    .then(data => {
+                        // ここに成功時の処理を追加（必要に応じて）
+                        alert("成功");
+                        window.location.href = './../preparation/index.html?RoomID=' + RoomID + '&RoomdateID=' + RoomdateID;
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert("エラー");
+                    });
+
+                // JSON形式で座標をコンソールログに表示
+                console.log("右上 lat:", rectangleCoordinates[0].lat, "lng:", rectangleCoordinates[0].lng);
+                console.log("左上 lat:", rectangleCoordinates[1].lat, "lng:", rectangleCoordinates[1].lng);
+                console.log("左下 lat:", rectangleCoordinates[2].lat, "lng:", rectangleCoordinates[2].lng);
+                console.log("右下 lat:", rectangleCoordinates[3].lat, "lng:", rectangleCoordinates[3].lng);
+            } else {
+                alert("四角形が描画されていません。");
+            }
+        }
+
+        function goBack() {
+            // ブラウザの戻るボタンを実行
+            window.location.href = './../make/index.html';
+        }
+    </script>
+
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZxPnhffhcNL7LWvwsyktUncZw-TVHXvI&callback=initMap&libraries=drawing">
+        </script>
+</body>
+
+</html>

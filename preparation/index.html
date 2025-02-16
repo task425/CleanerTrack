@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .container {
+            max-width: 600px;
+            text-align: center;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            margin: 20px; /* 追加 */
+        }
+
+        #backBtn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: grey;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+            z-index: 1;
+        }
+
+        #roomID {
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+
+        #result {
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        #gomain {
+            width: 100%;
+            padding: 15px;
+            background-color: #28cc9e;
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        #gomain:hover {
+            background-color: #28cc9e;
+        }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/6.3.4/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/6.3.4/firebase-firestore.js"></script>
+    <script>
+        // Firebaseの構成
+        var firebaseConfig = {
+            apiKey: "AIzaSyCHszTXle43TYH-YeHLQ6yxhr96qlu0Ac8",
+            authDomain: "it222035.firebaseapp.com",
+            databaseURL: "https://it222035-default-rtdb.firebaseio.com",
+            projectId: "it222035",
+            storageBucket: "it222035.appspot.com",
+            messagingSenderId: "461596179087",
+            appId: "1:461596179087:web:32d7ff30d1daad30304efa",
+            measurementId: "G-Y9WVLRJSHL"
+        };
+
+        // Firebaseアプリの初期化
+        firebase.initializeApp(firebaseConfig);
+
+        // Firestoreの参照を取得
+        var db = firebase.firestore();
+
+        // ボタンがクリックされたときの処理
+        function buttonClicked(roomid) {
+            // Firestoreにデータを書き込む
+            db.collection("navigation").doc(String(roomid)).set({ trigger: true })
+                .then(() => {
+                    console.log("Document successfully written!");
+                    // 例: window.location.href = '新しい画面のURL';
+                    // ルーム作成画面へリダイレクト
+                    window.location.href = './../main/mainDirectionFire.html?RoomID='+RoomID+'&RoomdateID='+RoomdateID+'&GuestID='+1;
+
+                })
+                .catch((error) => {
+                    console.error("Error writing document: ", error);
+                });
+
+            // 画面遷移の処理
+            // ここに遷移するためのコードを追加
+        }
+    </script>
+    <title>preparation</title>
+</head>
+
+<body>
+    <!-- 戻るボタン -->
+    <button id="backBtn" onclick="goToPreviousPage()">戻る</button>
+
+    <!-- Container -->
+    <div class="container">
+        <!-- RoomdateID表示用の要素 -->
+        <div id="roomID"></div>
+
+        <!-- 結果を表示するための要素 -->
+        <div id="result">参加人数: 0人</div>
+
+        <!-- 開始ボタン -->
+        <button id="gomain" onclick="goToNextPage()">開始</button>
+    </div>
+
+    <script>
+        // 現在のURLからクエリパラメータを取得
+        var urlParams = new URLSearchParams(window.location.search);
+        var RoomID = urlParams.get('RoomID');
+        var RoomdateID = urlParams.get('RoomdateID');
+
+        // RoomdateIDをコンソールに出力（必要に応じて他の処理を行う）
+        console.log(RoomdateID);
+
+        document.getElementById('roomID').innerText = 'RoomID: ' + RoomID;
+
+        let intervalId; // インターバルIDを保存する変数
+
+        // 5秒ごとにfetchData関数を実行するインターバルをセット
+        intervalId = setInterval(fetchData, 5000);
+
+        function goToNextPage() {
+            // インターバルをクリアして5秒ごとのデータ取得を停止
+            clearInterval(intervalId);
+            buttonClicked(RoomID);
+        }
+
+        function goToPreviousPage() {
+            // インターバルをクリアして5秒ごとのデータ取得を停止
+            clearInterval(intervalId);
+            // ルーム作成画面へリダイレクト
+            console.log(RoomID);
+            window.location.href = './../hannisitei/rangeSelection.html?RoomID='+RoomID+'&RoomdateID='+RoomdateID+'&GuestID='+1;
+        }
+
+        function fetchData() {
+            fetch('countid.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'RoomdateID=' + encodeURIComponent(RoomdateID),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Data from server:', data);
+                    var resultElement = document.getElementById('result');
+                    if (data.error) {
+                        resultElement.innerHTML = `参加人数: 0人`;
+                    } else {
+                        resultElement.innerHTML = `参加人数: ${data.count}人`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+
+    </script>
+</body>
+
+</html>

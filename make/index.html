@@ -1,0 +1,222 @@
+<meta name="robots" content="noindex" />
+
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoomID Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            max-width: 600px;
+            text-align: center;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        label {
+            display: block;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+
+        input {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+
+        button {
+            background-color: #28cc9e;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        button:hover {
+            background-color: #28cc9e;
+        }
+
+        #backBtn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: grey;
+            color: white;
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+            z-index: 1;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <button id="backBtn" onclick="goBack()">戻る</button>
+        <h2>ルーム作成</h2>
+
+        <!-- チェックボックス -->
+        <label for="autoGenerate" style="display: flex; align-items: center; white-space: nowrap;">
+            新規作成
+            <input type="checkbox" id="autoGenerate" onchange="toggleRoomIdInput()" style="margin-left: 5px;">
+        </label>
+
+
+        <!-- RoomID 入力フィールド -->
+        <input type="text" id="RoomIDInput" placeholder="ルームIDを入力してください" value="">
+
+        <!-- ボタン -->
+        <button onclick="processRoomID()">次へ</button>
+    </div>
+
+    <script>
+        var RoomIDInput = document.getElementById('RoomIDInput');
+        var autoGenerateCheckbox = document.getElementById('autoGenerate');
+
+        RoomIDInput.disabled = autoGenerateCheckbox.checked;
+        function toggleRoomIdInput() {
+            if (autoGenerateCheckbox.checked) {
+                // チェックボックスがチェックされている場合は新しい RoomID を生成
+                // Ajaxリクエストを実行
+                fetch('generate_roomid.php')
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.RoomID) {
+                            RoomIDInput.value = data.RoomID;
+                            console.log(data.RoomID);
+                        } else {
+                            alert("生成した RoomID がデータベースに存在しないかエラーが発生しました。");
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert("エラー");
+                    });
+                // RoomIDInputを無効化
+                RoomIDInput.disabled = true;
+            } else {
+                // チェックボックスがチェックされていない場合はRoomIDInputを有効化
+                RoomIDInput.disabled = false;
+            }
+        }
+
+
+        function processRoomID() {
+            var RoomIDInput = document.getElementById('RoomIDInput');
+            var autoGenerateCheckbox = document.getElementById('autoGenerate');
+            var enteredRoomID = RoomIDInput.value;
+            if (enteredRoomID) {
+                // Ajaxリクエストを実行
+                console.log(enteredRoomID);
+                fetch('validate_roomid.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'RoomID=' + enteredRoomID,
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data) {
+                            console.log(data.valid);
+                            storeRoomID(enteredRoomID);
+                        } else {
+                            console.log("エラー");
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert("エラー");
+                    });
+            } else {
+                alert("RoomID を入力してください。");
+            }
+        }
+
+
+        function storeRoomID(enteredRoomID) {
+            // データベースに RoomID を格納する処理を追加
+            // 以下は例として fetch を使用した非同期リクエストを行っていますが、実際の処理はデータベースに合わせて変更してください
+            var RoomID = enteredRoomID;
+            var now = new Date();
+            function padNumber(num) {
+                return num < 10 ? '0' + num : num;
+            }
+
+            var timestamp =
+                padNumber(now.getFullYear()) + '' +
+                padNumber(now.getMonth() + 1) + '' +
+                padNumber(now.getDate()) + '' +
+                padNumber(now.getHours()) + '' +
+                padNumber(now.getMinutes()) + '' +
+                padNumber(now.getSeconds());
+
+            console.log(RoomID);
+            console.log(timestamp);
+
+            fetch('insertid.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'RoomID=' + RoomID + '&time=' + timestamp,
+            })
+                .then(response => response.json())
+                .then((data) => {
+                    // 遷移処理を追加（適切なURLに変更する）
+                    console.log(data.count);
+                    var RoomdateID = data.RoomdateID;
+                    if ((data.count > 1 && !autoGenerateCheckbox.checked) || data.count == 1 && autoGenerateCheckbox.checked) {
+                        alert("成功");
+                        window.location.href = './../hannisitei/rangeSelection.html?RoomID=' + RoomID + '&timestamp=' + timestamp + '&RoomdateID=' + RoomdateID;
+                    } else if (data.count > 1 && autoGenerateCheckbox.checked) {
+                        alert("IDを作り直してください");
+                    } else if (data.count == 1 && !autoGenerateCheckbox.checked) {
+                        alert("IDが間違ってます");
+                    } else {
+                        alert("IDが間違ってます!!");
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert("エラー");
+                });
+        }
+
+        function goBack() {
+            // ブラウザの戻るボタンを実行
+            window.location.href = './../menu/menu.html';
+        }
+    </script>
+
+</body>
+
+</html>

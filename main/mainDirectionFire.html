@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>main</title>
+    <script src="https://www.gstatic.com/firebasejs/6.3.4/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/6.3.4/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/5.9.1/firebase-messaging.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/6.3.4/firebase-storage.js"></script>
+    <style>
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            /* 背景色を設定 */
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        #buttons {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+        }
+
+        .map-button {
+            background-color: #4CAF50;
+            /* ボタンの背景色を設定 */
+            color: white;
+            /* ボタンのテキストカラーを設定 */
+            padding: 10px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+
+        #pinBtn {
+            background-color: #3498db;
+            /* ピンボタンの背景色を設定 */
+        }
+
+        #finBtn {
+            background-color: #e74c3c;
+            /* 終了ボタンの背景色を設定 */
+        }
+
+        .photolayout {
+            max-width: 100%;
+            max-height: 150px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <div id="buttons">
+        <button class="map-button" id="pinBtn" onclick="addPinFromButton()">1袋終了</button>
+        <button class="map-button" id="finBtn" onclick="finish()">終了</button>
+    </div>
+
+    <script type="text/javascript">
+        var map;
+        var marker;
+        var garbageBag = [];//ゴミ袋ピンの座標を格納
+        var mapPin = [];//mapピンの座標を格納
+        var presentLocation = [];//現在位置座標を格納
+        var circle; // 追加: 現在位置を示す円
+        var updatingLocation = false; // 位置情報を自動更新するかどうかのフラグ
+        var locationUpdateInterval; // 位置情報更新のインターバル
+        var longPressDuration = 1000; // ロングプレスの時間（ミリ秒）
+        var pressTimer; // タイマー
+        var RoomID = new URLSearchParams(window.location.search).get('RoomID'); //参加、準備画面からRoomIDを持ってくる
+        var RoomdateID = new URLSearchParams(window.location.search).get('RoomdateID');//参加、準備画面からRoomIDを持ってくる
+        var GuestID = new URLSearchParams(window.location.search).get('GuestID');//参加、準備画面からRoomIDを持ってくる
+        var RootID = RoomdateID + "" + GuestID; //参加者識別のための変数
+        console.log("RoomdateID:" + RoomdateID);
+        var RootIDs = []; //他の参加者のルートIDを格納
+        var RootDirection = {};//ほかの参加者のルート座標
+        var previousRoutes = []; // 過去の"ルート"を保存する配列
+        var flags = 0;
+        var finishcounter = 0;
+
+
+        var firebaseConfig = {
+            apiKey: "AIzaSyCHszTXle43TYH-YeHLQ6yxhr96qlu0Ac8",
+            authDomain: "it222035.firebaseapp.com",
+            projectId: "it222035",
+            storageBucket: "it222035.appspot.com",
+            messagingSenderId: "461596179087",
+            appId: "1:461596179087:web:82bd1c5715115717304efa",
+            measurementId: "G-Z2KZ9NJQR0"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        var db = firebase.firestore();
+        var storage = firebase.storage(); // Firebase Storageの初期化
+        // Firebaseから持ってきたデータを保存する配列(Firebase追加後のデータも格納)
+        var dbData = [];
+
+
+        function initMap() {
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: -34.397, lng: 150.644 },
+                zoom: 18,
+                // Street View controlを消す
+                streetViewControl: false,
+
+                // Map Type control (satellite, terrain, etc.)を消す
+                mapTypeControl: false,
+
+                // Zoom controlを消す
+                zoomControl: false
+            });
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    var pos = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    map.setCenter(pos);
+                    // マーカーではなく、円を描画
+                    drawCurrentLocation(pos);
+                    getDBData();
+                }, function () {
+                    handleLocationError(true);
+                });
+            } else {
+                handleLocationError(false);
+            }
+
+            google.maps.event.addListener(map, 'click', function (event) {
+                addPinGarbage(event.latLng);
+            });
+
+            // 位置情報自動更新を有効にする
+            toggleLocationUpdate();
+
+            // 5秒後に1回だけgetRootID()を呼び出す
+            setTimeout(function () {
+                getRootID();
+            }, 5000);
+        }
+
+        //itiから参照
+        function getRootID() {
+            // JavaScriptからのPOSTリクエストの例
+            fetch('get_rootid.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: '&RoomdateID=' + RoomdateID,
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data) {
+                        RootIDs.push(data);
+                    } else {
+                        console.log('取得したデータがありません。');
+                    }
+
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert("エラー");
+                });
+
+        }
+
+        //４点座標ををdbから参照
+        function getDBData() {
+            // JavaScriptからのPOSTリクエストの例
+            fetch('get_roomdateid.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: '&RoomdateID=' + RoomdateID,
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data) {
+                        fillinsquare(data);
+
+                        // 範囲の中心をマップの中心に設定
+                        var centerPoint = getCenterPoint(JSON.parse(data[0].ne), JSON.parse(data[0].sw));
+                        map.setCenter(centerPoint);
+
+                        // マップのズームを範囲に合わせる
+                        fitBounds(map, [JSON.parse(data[0].ne), JSON.parse(data[0].sw)]);
+                    } else {
+                        console.log('取得したデータがありません。');
+                    }
+
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert("エラー");
+                });
+
+        }
+
+        // 四角形を描く
+        function fillinsquare(data) {
+            // 座標4点
+            var ne = JSON.parse(data[0].ne);
+            var nw = JSON.parse(data[0].nw);
+            var sw = JSON.parse(data[0].sw);
+            var se = JSON.parse(data[0].se);
+            var square = [ne, nw, sw, se];
+
+            for (var i = 0; i < square.length; i++) {
+                var line = new google.maps.Polyline({
+                    path: [square[i], square[i + 1]],
+                    strokeColor: "#000000",
+                    strokeOpacity: 1.0,
+                    strokeWeight: 5
+                });
+
+                line.setMap(map);
+            }
+
+            var line = new google.maps.Polyline({
+                path: [square[3], square[0]],
+                strokeColor: "#000000",
+                strokeOpacity: 1.0,
+                strokeWeight: 5
+            });
+
+            line.setMap(map);
+        }
+
+        // 2点の中心座標を求める関数
+        function getCenterPoint(point1, point2) {
+            var lat = (point1.lat + point2.lat) / 2;
+            var lng = (point1.lng + point2.lng) / 2;
+            return { lat: lat, lng: lng };
+        }
+
+        // マップのズームを範囲に合わせる関数
+        function fitBounds(map, bounds) {
+            var mapBounds = new google.maps.LatLngBounds();
+            bounds.forEach(function (point) {
+                mapBounds.extend(new google.maps.LatLng(point.lat, point.lng));
+            });
+            map.fitBounds(mapBounds);
+        }
+
+        //参加者座標をdbから参照
+        async function otherUsers(i) {
+            // JavaScriptからのPOSTリクエストの例
+            return new Promise(resolve => {
+                console.log("RootIDs:" + JSON.stringify(RootIDs[0][i]));
+                fetch('get_root.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'RootID=' + RootIDs[0][i].RootID,
+                })
+                    .then(response => response.json())
+                    .then(async data => {
+
+                        console.log("data is through");
+                        console.log("data:" + JSON.stringify(data));
+
+                        // キーの配列を取得
+                        var RootDirectionArray = Object.keys(RootDirection);
+                        if (RootDirectionArray.length < RootIDs[0].length) {
+                            // 配列にデータを格納
+                            RootDirection[RootIDs[0][i].RootID] = data[0];
+                            console.log("First RootDirection push. RootDirection:" + JSON.stringify(RootDirection));
+                        }
+
+                        await drawLines(data, i);
+
+                        // 配列にデータを格納
+                        RootDirection[RootIDs[0][i].RootID] = data[0];
+                        console.log("Second RootDirection push. RootDirection:" + JSON.stringify(RootDirection));
+
+                        console.log("get_root is finish");
+                        resolve('get_root is finish');
+
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert("エラー");
+                    });
+            });
+        }
+
+        //参加者軌跡描写
+        async function drawLines(coordinates, i) {
+            var directionsService = new google.maps.DirectionsService();// Directions APIを使用するために必要なもの（多分）
+            var directionsRenderer = new google.maps.DirectionsRenderer(); // 地図にDirections（ルート）を描画するやつ
+            console.log("drawLines's i : " + i);
+            // console.log("RootDirections:" + JSON.stringify(RootDirection[RootIDs[0][i].RootID]) + "coordinates:" + JSON.stringify(coordinates[0]));
+            // console.log("RootDirection.length:" + RootDirection.length + ",RootIDs.length" + RootIDs[0].length);
+
+            if (coordinates[0] != undefined && RootDirection[RootIDs[0][i].RootID] != undefined) {
+                console.log("drawLines if code is true");
+                return new Promise(resolve => {
+                    // Directions request
+                    var request = {
+                        origin: RootDirection[RootIDs[0][i].RootID],// 1個前の位置情報
+                        destination: { lat: parseFloat(coordinates[0].lat), lng: parseFloat(coordinates[0].lng) },// 現在地
+                        travelMode: 'WALKING'
+                    };
+
+
+                    // Get directions
+                    directionsService.route(request, function (result, status) {
+                        if (status == 'OK') {
+                            // 新しいルートの描画
+                            // directionsRenderer.setDirections(result);
+
+                            //参加者自身とそれ以外の参加者で軌跡の色分け
+                            if (RootIDs[0][i].RootID == RootID) {
+                                var color = '#FF0000';
+                            } else {
+                                var color = '#00FF00';
+                            }
+
+                            // 過去のルートを保存（ポリラインで新しく描画）
+                            var newPolyline = new google.maps.Polyline({
+                                path: result.routes[0].overview_path,
+                                geodesic: true,
+                                strokeColor: color,
+                                strokeOpacity: 1,
+                                strokeWeight: 5
+                            });
+
+                            // どのマップにポリラインを表示するかを表示
+                            newPolyline.setMap(map);
+                            previousRoutes.push(newPolyline);
+
+                            console.log("directionsService is finished");
+                            resolve();
+                        } else {
+                            console.error('Directions request failed. Status:', status);
+                        }
+                    });
+                });
+            }
+        }
+
+        //10秒ごとに呼び出す
+        function toggleLocationUpdate() {
+
+            updatingLocation = !updatingLocation;
+
+            if (updatingLocation) {
+                locationUpdateInterval = setInterval(updateUserLocation, 5000); // 10秒ごとに位置情報を更新
+            } else {
+                clearInterval(locationUpdateInterval);
+            }
+        }
+
+        //位置情報を取得
+        function updateUserLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+
+                    var pos = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+
+                    // 現在位置を示す円の位置を更新
+                    updateCurrentLocation(pos);
+
+                    // 更新された位置情報を presentLocation 配列に格納
+                    presentLocation.push(pos);
+
+                    // 現在の日時を取得
+                    var date = new Date();
+
+                    // ローカライズされた年月日時刻の文字列を取得
+                    var time = date.toLocaleString('ja-JP', {
+                        year: 'numeric',
+                        month: 'numeric',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: 'numeric',
+                        second: 'numeric'
+                    });
+
+                    // console.log("RootID" + RootID);
+
+                    // 位置情報のDB送信
+                    fetch('process3.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: 'RootID=' + RootID +
+                            '&time=' + time +
+                            '&lat=' + pos.lat +
+                            '&lng=' + pos.lng,
+                    })
+                        .then(response => response.text())
+                        .then(async data => {
+                            console.log("位置情報送信");
+                            //参加者の軌跡描写
+                            for (let i = 0; i < RootIDs[0].length; i++) {
+                                console.log("otherUsers i : " + i);
+                                await otherUsers(i);
+                            }
+                            // if (RootDirection.length > RootIDs[0].length) {
+                            //     for (var rtidnum = 0; rtidnum < RootIDs[0].length; rtidnum++) {
+                            //         RootDirection.shift();
+                            //         console.log("RootDirection is delete");
+                            //     }
+                            // }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert("エラー");
+                        });
+                }, function () {
+                    handleLocationError(true);
+                });
+            } else {
+                handleLocationError(false);
+            }
+        }
+
+
+        function drawCurrentLocation(position) {
+            // 前回のサークルが存在する場合は削除
+            if (circle) {
+                circle.setMap(null);
+            }
+
+            // 現在位置を示す円を描画
+            circle = new google.maps.Circle({
+                strokeColor: '#4285f4',
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                fillColor: '#4285f4',
+                fillOpacity: 0.35,
+                map: map,
+                center: position,
+                radius: calculateCircleRadius() // ピクセル数を計算する関数を呼び出す
+            });
+        }
+
+        // 現在位置を示す円の位置を更新
+        function updateCurrentLocation(position) {
+            if (circle) {
+                circle.setCenter(position);
+                circle.setRadius(calculateCircleRadius()); // ピクセル数を計算する関数を呼び出す
+            }
+        }
+
+        // 円の半径をピクセル数で計算する関数
+        function calculateCircleRadius() {
+            // 基本サイズ（ピクセル数）
+            var baseRadius = 40;
+
+            // マップの現在のズーム レベルを取得
+            var zoomLevel = map.getZoom();
+
+            // ズーム レベルに応じて減算される値を計算
+            var subtractValue = zoomLevel * 2;
+
+            // 減算された値が 0 以下にならないようにする
+            subtractValue = Math.max(subtractValue, 20);
+
+            // 円の半径を計算
+            var radius = Math.max(baseRadius - subtractValue, 0);
+
+            return radius;
+        }
+
+
+        function handleLocationError(browserHasGeolocation) {
+            if (browserHasGeolocation) {
+                console.error("位置情報の取得に失敗しました。");
+            } else {
+                console.error("このブラウザは位置情報をサポートしていません。");
+            }
+        }
+
+
+        // 初期ピン設定
+        function addInitialMarker(i) {
+            // マーカー情報
+            var marker = new google.maps.Marker({
+                position: { lat: dbData[i].lat, lng: dbData[i].lng },
+                map: map,
+                draggable: true,
+                animation: google.maps.Animation.DROP
+            });
+
+            // 写真やテキストのウィンドウ情報
+            var infowindow = new google.maps.InfoWindow({
+                content: '<div class="info-content">' +
+                    '<img id="photoPreview" class="photolayout" src="' + dbData[i].photo + '"><br>' +
+                    '<p id="text">' + dbData[i].text + '</p>' +
+                    '</div>'
+            })
+
+            // クリック時ウィンドウ表示
+            marker.addListener('click', function () {
+                infowindow.open(map, marker);
+            });
+        }
+
+        function addPinGarbage(location) {
+
+            // マップ上に新しいピンを追加
+            var marker = new google.maps.Marker({
+                position: location,
+                map: map,
+                title: '新しいピン',//←☆端末情報に変える
+                animation: google.maps.Animation.DROP
+            });
+
+            // マーカーを配列に追加
+            mapPin.push(marker);
+            displayMapPin();
+
+            //マップ上の吹き出し
+            var infoputwindow = new google.maps.InfoWindow({
+                content: '<div class="info-content">' +
+                    '<input type="file" id="photoInput' + mapPin.indexOf(marker) + '" accept="image/*" onchange="previewPhoto(' + mapPin.indexOf(marker) + ')"><br>' +
+                    '<img id="photoPreview' + mapPin.indexOf(marker) + '" class="photolayout"><br>' +
+                    '<textarea id="textInput' + mapPin.indexOf(marker) + '" placeholder="Enter text"></textarea><br>' +
+                    '<button onclick="saveInfo(\'' + mapPin.indexOf(marker) + '\')">Save</button>' +
+                    '</div>'
+            });
+
+            // クリック時ウィンドウ表示
+            marker.addListener('click', function () {
+                infoputwindow.open(map, marker);
+            });
+
+            // マーカーに対してmousedownイベントを追加
+            google.maps.event.addListener(marker, 'mousedown', function (event) {
+                // マウスが押されたときにタイマーをセット
+                pressTimer = window.setTimeout(function () {
+                    // ロングプレス時の処理
+                    onLongPress(marker);
+                }, longPressDuration);
+            });
+
+            // マーカーに対してmouseupイベントを追加
+            google.maps.event.addListener(marker, 'mouseup', function () {
+                window.clearTimeout(pressTimer);
+            });
+        }
+
+        // データ登録時の写真プレビュー表示
+        function previewPhoto(markerIndex) {
+            var input = document.getElementById('photoInput' + markerIndex);
+            var preview = document.getElementById('photoPreview' + markerIndex);
+            var file = input.files[0];
+
+            if (file) {
+                var reader = new FileReader();
+
+                reader.onload = function (e) {
+                    preview.src = e.target.result;
+                };
+
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // データ登録
+        async function saveInfo(markerIndex) {
+            var input = document.getElementById('photoInput' + markerIndex);
+            var textInput = document.getElementById('textInput' + markerIndex);
+            // inputの中に入っているファイルの1番目を取り出して変数fileに入れてる
+            var file = input.files[0];
+
+            // ファイルが存在するとき
+            if (file) {
+                var reader = new FileReader();
+                // Firebase Storage
+                // ストレージ内の保存先のパス
+                const storageRef = storage.ref('images/' + file.name);
+                // ファイルをストレージにアップロード
+                const uploadTask = await storageRef.put(file);
+
+                reader.onload = async function (e) {
+                    // 格納するデータの設定
+                    var textValue = textInput.value;
+                    var marker = mapPin[markerIndex];
+                    marker.setMap(null); // マーカーを一旦削除
+
+                    // アップロード完了後の処理
+                    // マーカー再表示
+                    try {
+                        // ダウンロードURLを取得し、非同期処理が完了するまで待つ
+                        const downloadURL = await storageRef.getDownloadURL();
+
+                        // dbDataに値を格納
+                        dbData.push({
+                            lat: marker.getPosition().lat(),
+                            lng: marker.getPosition().lng(),
+                            photo: downloadURL,
+                            text: textInput.value
+                        });
+                        // マーカー表示
+                        addInitialMarker(dbData.length - 1);
+                    } catch (error) {
+                        console.error('Error getting download URL:', error);
+                        return null; // エラーの場合は適切にハンドリング
+                    }
+                };
+
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // ロングプレス時の処理を行う関数
+        function onLongPress(marker) {
+            // ロングプレス時にダイアログを表示
+            var confirmed = window.confirm('ピンを削除しますか？');
+
+            // ユーザーが確認した場合
+            if (confirmed) {
+                // ピンが存在するか確認してから削除
+                if (marker) {
+                    marker.setMap(null);
+                    // 配列からも削除
+                    var index = garbageBag.indexOf(marker);
+                    var index2 = mapPin.indexOf(marker);
+                    if (index > -1) {
+                        garbageBag.splice(index, 1);
+                        displayGarbageBag(); // ロングプレス後に配列の中身を表示
+                    }
+                    if (index2 > -1) {
+                        mapPin.splice(index, 1);
+                        displayMapPin();
+                    }
+                    alert('ピンを削除しました');
+                }
+            }
+        }
+
+        function getCurrentPosition() {
+            if (navigator.geolocation) {
+                // ユーザーの現在の位置を取得
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    var pos = {
+                        lat: position.coords.latitude, // 緯度
+                        lng: position.coords.longitude // 経度
+                    };
+
+                    // マップの中心を現在位置に設定
+                    map.setCenter(pos);
+
+                    // 現在位置を示す円を描画
+                    drawCurrentLocation(pos);
+                }, function () {
+                    // 位置情報の取得に失敗した場合の処理
+                    handleLocationError(true);
+                });
+            } else {
+                // ブラウザが位置情報サポートしていない場合の処理
+                handleLocationError(false);
+            }
+        }
+
+        //1袋終了ボタン押下時
+        function addPin(location) {
+            // カスタムピンのアイコン
+            var customIcon = {
+                url: 'Images/gomibukuro_single.png', // 画像ファイルへのパス
+                scaledSize: new google.maps.Size(32, 32), // サイズ
+                origin: new google.maps.Point(0, 0), // 原点
+                anchor: new google.maps.Point(16, 32) // アンカー
+            };
+
+            var FukuroID = garbageBag.length + "" + RootID
+
+            // 現在の日時を取得
+            var date = new Date();
+
+            // ローカライズされた年月日時刻の文字列を取得
+            var time = date.toLocaleString('ja-JP', {
+                year: 'numeric',
+                month: 'numeric',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric',
+                second: 'numeric'
+            });
+
+            // マップ上に新しいピンを追加
+            var marker = new google.maps.Marker({
+                position: location,
+                map: map,
+                FukuroID: FukuroID,
+                time: time,
+                icon: customIcon, // カスタムアイコンを設定
+                animation: google.maps.Animation.DROP
+            });
+
+            // マーカーにクリックイベントを追加
+            marker.addListener('click', function () {
+                infowindow.open(map, marker);
+            });
+
+            // マーカーを配列に追加
+            garbageBag.push(marker);
+            displayGarbageBag();
+
+            // マーカーに対してmousedownイベントを追加
+            google.maps.event.addListener(marker, 'mousedown', function (event) {
+                // マウスが押されたときにタイマーをセット
+                pressTimer = window.setTimeout(function () {
+                    // ロングプレス時の処理
+                    onLongPress(marker);
+                }, longPressDuration);
+            });
+
+            // マーカーに対してmouseupイベントを追加
+            google.maps.event.addListener(marker, 'mouseup', function () {
+                window.clearTimeout(pressTimer);
+            });
+        }
+
+        function addPinFromButton() {
+            // ボタンから呼び出されるときに位置情報を設定
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    var pos = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    addPin(pos);
+                }, function () {
+                    handleLocationError(true);
+                });
+            } else {
+                handleLocationError(false);
+            }
+        }
+
+        // ゴミ袋の情報をコンソールログに表示
+        function displayGarbageBag() {
+            for (var i = 0; i < garbageBag.length; i++) {
+                var position = garbageBag[i].getPosition();
+                var FukuroID = garbageBag[i].FukuroID;
+            }
+        }
+
+        // ピンの情報をコンソールログに表示
+        function displayMapPin() {
+            for (var i = 0; i < mapPin.length; i++) {
+                var position = mapPin[i].getPosition();
+                var title = mapPin[i].getTitle();
+            }
+        }
+
+
+        //終了ボタン押下時
+        async function finish() {
+            for (let i = 0; i < garbageBag.length; i++) {
+                var position = garbageBag[i].getPosition();
+                var FukuroID = garbageBag[i].FukuroID;
+                var time = garbageBag[i].time;
+
+                //ゴミ袋ピンをDBに送信
+                await fetch('process4.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: '&FukuroID=' + FukuroID +
+                        '&lat=' + position.lat() +
+                        '&lng=' + position.lng() +
+                        '&RootID=' + RootID +
+                        '&time=' + time,
+                })
+                    .then(data => {
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert("エラー: " + error.message); // エラーメッセージをアラートで表示
+                    });
+            }
+
+            //ホストが終了ボタンを押した場合ルームを閉じる
+            if (GuestID == 1) {
+                fetch('process5.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: '&RoomdateID=' + RoomdateID,
+                })
+                    .then(data => {
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert("エラー: " + error.message); // エラーメッセージをアラートで表示
+                    });
+
+                console.log("trigger set before false");
+                // Firestoreにデータを書き込む
+                await db.collection("navigation").doc(String(RoomID)).set({ trigger: false })
+                    .then(() => {
+                        console.log("set trigger is false");
+                        // 例: window.location.href = '新しい画面のURL';
+                        alert("強制終了させます");
+                        flags = 1;
+                    })
+                    .catch((error) => {
+                        console.error("Error writing document: ", error);
+                    });
+            }
+
+            window.location.href = './../menu/menu.html';
+        }
+
+        function finishcheck() {
+            finishcounter++;
+            const docRef = db.collection('navigation').doc(String(RoomID));
+
+            docRef.get().then((doc) => {
+                if (doc.exists) {
+                    console.log('ドキュメントデータ:', doc.data());
+                    if (doc.data().trigger == false) {
+                        alert("ホストが終了ボタンを押したため、強制終了します");
+                        console.log("false success. jump menu");
+                        window.location.href = "./../menu/menu.html";
+                    }
+                } else {
+                    console.log('ドキュメントが存在しません');
+                }
+            }).catch((error) => {
+                console.error('ドキュメント取得エラー:', error);
+            });
+        }
+
+        // 1秒ごとにupdateOutput関数を呼び出す
+        var finishintervalId = setInterval(finishcheck, 10000);
+    </script>
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZxPnhffhcNL7LWvwsyktUncZw-TVHXvI&callback=initMap">
+        </script>
+</body>
+
+</html>
