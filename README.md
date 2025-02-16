@@ -19,6 +19,10 @@ https://gomiapp.ciao.jp/menu/menu.html <br>
 画面を長押しすると、ピンを打つことができる。これは危険なゴミや犬のフンなどを後でどこにあったかを確認できるようにするため。<br>
 主催者が終了を押すと、部屋が閉じる。<br>
 後で、フィードバック画面でルートやピンを確認することができる。<br>
+例）
+![IMG_7828](https://github.com/user-attachments/assets/8ac161fd-a60f-4b95-9ff0-a29bba4df9a8)
+![Screenshot_2024-01-18-19-31-37-12_965bbf4d18d205f782c6b8409c5773a4](https://github.com/user-attachments/assets/3cc64170-483d-4c6a-8387-f03a2799f89c)
+
 
 
 ### 担当
